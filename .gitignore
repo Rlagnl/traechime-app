@@ -1,0 +1,18 @@
+# IDE 本地目录
+.trae/
+
+# macOS
+.DS_Store
+
+# Swift Package Manager 构建产物
+.build/
+
+# Xcode（若用 Xcode 打开该包时生成）
+.swiftpm/
+DerivedData/
+xcuserdata/
+
+# 打包/发布产物（由 scripts/ 重新生成）
+dist/
+*.dmg
+AppIcon.icns
