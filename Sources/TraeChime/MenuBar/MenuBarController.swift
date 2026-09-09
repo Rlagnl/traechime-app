@@ -13,6 +13,13 @@ final class MenuBarController {
     /// 右上角彩色呼吸点
     private var dotLayer: CAShapeLayer?
 
+    /// 当前聚合状态，用于判断是否启用「任务中」逐字跳动动画
+    private var currentState: ChimeState = .idle
+    /// 「任务中」逐字跳动动画的驱动定时器
+    private var textBounceTimer: Timer?
+    /// 动画起始时刻（单调时钟），据此计算各字符的跳动相位
+    private var textBounceStart: TimeInterval = 0
+
     var onClick: (() -> Void)?
     var statusButton: NSStatusBarButton? { statusItem.button }
 
@@ -32,11 +39,11 @@ final class MenuBarController {
     // MARK: 状态切换
 
     func setState(_ state: ChimeState) {
+        currentState = state
+        stopTextBounce()
+
         guard let button = statusItem.button else { return }
-        let height = button.bounds.height > 0 ? button.bounds.height : 22
-        button.image = renderContent(text: state.menuBarText, height: height)
-        button.imagePosition = .imageOnly
-        button.setAccessibilityLabel(state.menuBarText)
+        render(on: button)
 
         // 仅「需要注意」时显示右上角彩色呼吸点
         dotLayer?.removeFromSuperlayer()
@@ -44,12 +51,57 @@ final class MenuBarController {
         if case .attention(let kind) = state {
             installDot(on: button, color: kind.dotColor)
         }
+
+        // 「任务中」启动逐字跳动动画
+        if state == .running {
+            startTextBounce()
+        }
     }
 
     // MARK: - 合成内容（左对齐 logo + 6px 间距 + 文字）
 
+    /// 刷新菜单栏按钮图片，并根据当前状态决定是否应用逐字跳动偏移
+    private func render(on button: NSStatusBarButton) {
+        let height = button.bounds.height > 0 ? button.bounds.height : 22
+        let text = currentState.menuBarText
+        button.image = renderContent(text: text, height: height, charOffsets: bounceOffsets(for: text))
+        button.imagePosition = .imageOnly
+        button.setAccessibilityLabel(text)
+    }
+
+    // MARK: - 「任务中」逐字跳动动画
+
+    /// 计算「任务中」各字符当前向上的偏移量；非 running 状态返回 nil 走静态绘制
+    private func bounceOffsets(for text: String) -> [CGFloat]? {
+        guard currentState == .running, text.count > 1 else { return nil }
+        let period = 0.3                               // 单个字符「跳起-落下」的周期（秒）
+        let elapsed = CACurrentMediaTime() - textBounceStart
+        let active = Int(elapsed / period) % text.count   // 当前活跃字符：任→务→中 依次串行
+        let local = (elapsed / period).truncatingRemainder(dividingBy: 1)  // 当前字符内部相位 0~1
+        let height = sin(local * .pi) * 2              // 正弦脉冲：0 → 峰值(2pt) → 0，只向上
+        return (0..<text.count).map { index in
+            index == active ? height : 0
+        }
+    }
+
+    private func startTextBounce() {
+        textBounceStart = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            guard let self, let button = self.statusItem.button else { return }
+            self.render(on: button)
+        }
+        // 加入 common 模式，确保菜单打开等场景下动画依旧持续
+        RunLoop.main.add(timer, forMode: .common)
+        textBounceTimer = timer
+    }
+
+    private func stopTextBounce() {
+        textBounceTimer?.invalidate()
+        textBounceTimer = nil
+    }
+
     /// 将 logo 与状态文字合成到一张固定宽度图片，保证左对齐与间距可控
-    private func renderContent(text: String, height: CGFloat) -> NSImage {
+    private func renderContent(text: String, height: CGFloat, charOffsets: [CGFloat]?) -> NSImage {
         let image = NSImage(size: NSSize(width: fixedWidth, height: height))
         let appearance = statusItem.button?.effectiveAppearance
             ?? NSApp.appearance
@@ -70,7 +122,19 @@ final class MenuBarController {
             let textX = logoSize + spacing
             // 圆体字形底部有 descender 溢出，光学中心略偏下，微调补偿
             let textY = (height - textSize.height) / 2 + 0.5
-            (text as NSString).draw(at: NSPoint(x: textX, y: textY), withAttributes: attrs)
+
+            if let offsets = charOffsets, offsets.count == text.count {
+                // 逐字绘制：每个字符独立垂直偏移，实现「任→务→中」依次跳动
+                var x = textX
+                for (index, char) in text.enumerated() {
+                    let s = String(char)
+                    let w = (s as NSString).size(withAttributes: attrs).width
+                    s.draw(at: NSPoint(x: x, y: textY + offsets[index]), withAttributes: attrs)
+                    x += w
+                }
+            } else {
+                (text as NSString).draw(at: NSPoint(x: textX, y: textY), withAttributes: attrs)
+            }
             image.unlockFocus()
         }
         return image
@@ -89,14 +153,16 @@ final class MenuBarController {
     }
 
     private static func loadLogo() -> NSImage? {
-        let candidates: [URL?] = [
-            Bundle.module.url(forResource: "traechime-logo-mark", withExtension: "png"),
-            Bundle.main.url(forResource: "traechime-logo-mark", withExtension: "png")
-        ]
-        for url in candidates {
-            if let url = url, let image = NSImage(contentsOf: url) {
-                return image
-            }
+        // 打包后的 app 资源位于 Contents/Resources，优先从 Bundle.main 读取；
+        // 用短路判断避免在 app 中触发 Bundle.module 初始化（其硬编码了开发机 .build 路径）
+        if let url = Bundle.main.url(forResource: "traechime-logo-mark", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        // 开发阶段（swift run）资源在 SwiftPM resource bundle 中，作为兜底
+        if let url = Bundle.module.url(forResource: "traechime-logo-mark", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return image
         }
         return nil
     }

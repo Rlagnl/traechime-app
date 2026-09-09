@@ -154,6 +154,16 @@ curl -s -X POST http://127.0.0.1:17387/v1/events \
 | `PreToolUse` / `PostToolUse` | `resumed`（从待确认恢复执行） |
 | `Stop` | `completed`（兜底） |
 
+### 已知限制
+
+受限于 TraeCode 当前的 Hook 机制，以下两个场景暂时无法被准确感知，菜单栏状态可能停留在旧状态：
+
+1. **主动停止**：手动停止一个正在执行的任务时，TraeCode 不会触发任何 Hook 事件（`Stop` 事件只在正常结束的生命周期中触发，手动停止不触发）。因此菜单栏会一直停留在「任务中」，无法自动感知到任务已被停止。
+
+2. **待确认 → 任务中**：当「待确认」事件被处理后 Agent 恢复执行时，TraeCode 没有提供对应的通知信号（`PreToolUse` / `PostToolUse` 无法覆盖纯人工确认后恢复的场景），因此状态无法可靠地从「待确认」回到「任务中」。
+
+> 这两个场景属于 TraeCode Hook 机制的信号盲区，待 TraeCode 后续完善 Hook 机制（例如补充 `SessionStop` 等生命周期事件）后，TraeChime 会跟进补全对应的事件映射。
+
 ### 卸载
 
 1. 从 `~/.trae-cn/hooks.json` 中删除指向 `traechime-hook` 的 Hook 条目（或删除整个文件，如无其他用途）；

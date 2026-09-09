@@ -8,7 +8,7 @@ import CryptoKit
 // 事件映射：
 // - UserPromptSubmit                        -> started（开始执行，标题取用户 prompt）
 // - Notification(idle_prompt)               -> completed
-// - Notification(permission_prompt/document_review) -> confirm_required
+// - Notification(permission_prompt/document_review/ask_user_question/browser_interaction) -> confirm_required
 // - Stop                                    -> completed（兜底）
 //
 // 说明：不向 stdout 输出任何内容、退出码恒为 0，因此不会注入上下文、也不会阻断智能体流程。
@@ -80,7 +80,8 @@ case "Notification":
     let ntype = obj["notification_type"] as? String ?? ""
     if ntype == "idle_prompt" {
         event = "completed"
-    } else if ntype == "permission_prompt" || ntype == "document_review" {
+    } else if ntype == "permission_prompt" || ntype == "document_review"
+              || ntype == "ask_user_question" || ntype == "browser_interaction" {
         event = "confirm_required"
     }
     title = loadTitle(sessionID)

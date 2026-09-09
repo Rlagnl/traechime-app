@@ -116,14 +116,16 @@ struct PanelView: View {
     }
 
     static func logoImage() -> NSImage? {
-        let candidates: [URL?] = [
-            Bundle.module.url(forResource: "traechime-logo-chime-word-rounded-v3", withExtension: "jpg"),
-            Bundle.main.url(forResource: "traechime-logo-chime-word-rounded-v3", withExtension: "jpg")
-        ]
-        for url in candidates {
-            if let url = url, let image = NSImage(contentsOf: url) {
-                return image
-            }
+        // 打包后的 app 资源位于 Contents/Resources，优先从 Bundle.main 读取；
+        // 用短路判断避免在 app 中触发 Bundle.module 初始化（其硬编码了开发机 .build 路径）
+        if let url = Bundle.main.url(forResource: "traechime-logo-chime-word-rounded-v3", withExtension: "jpg"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        // 开发阶段（swift run）资源在 SwiftPM resource bundle 中，作为兜底
+        if let url = Bundle.module.url(forResource: "traechime-logo-chime-word-rounded-v3", withExtension: "jpg"),
+           let image = NSImage(contentsOf: url) {
+            return image
         }
         return nil
     }
