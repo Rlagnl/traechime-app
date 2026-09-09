@@ -32,7 +32,7 @@ TraeChime 是一款 macOS 菜单栏常驻的 **AI Agent 状态提醒工具**：�
 
 1. `swift build -c release` 编译两个可执行目标（主程序与 Hook 桥接程序）
 2. 调用 [scripts/make_app.sh](scripts/make_app.sh) 组装 `dist/TraeChime.app`：拷贝二进制与资源、写入 `Info.plist`（含 `LSUIElement`）、对 app 做 ad-hoc 临时签名
-3. 用 `hdiutil` 制作 UDZO 压缩镜像 `dist/TraeChime.dmg`（卷名 `TraeChime`，内含 `TraeChime.app` 与「应用程序」快捷方式）
+3. 用 `hdiutil` 制作 UDZO 压缩镜像 `dist/TraeChime-<版本>.dmg`（卷名 `TraeChime`，内含 `TraeChime.app` 与「应用程序」快捷方式）
 
 如果只想生成 .app 而不打 dmg，可单独执行：
 
@@ -43,16 +43,29 @@ TraeChime 是一款 macOS 菜单栏常驻的 **AI Agent 状态提醒工具**：�
 **产物路径**
 
 - `dist/TraeChime.app`
-- `dist/TraeChime.dmg`
+- `dist/TraeChime-<版本>.dmg`（`<版本>` 取自 `VERSION` 文件）
 
 **注意事项**
 
 - 产物为 **ad-hoc 签名、未公证（notarization）** 的版本，仅适合本地与内部分发。如需对外发布，请改用你的 Developer ID 签名并完成公证。
 - 脚本可重复执行：每次都会先清空 `dist/` 下旧的 app / dmg 再生成。
 
+### 自动发布（GitHub Release）
+
+项目内置了基于 **Git tag + GitHub Actions + GitHub Release** 的自动化打包发布流程：
+
+1. **版本号唯一来源**：`VERSION` 文件（当前 `1.0.0`）。发布前先更新它并提交；
+2. **打 tag**：`git tag v$(cat VERSION)` 并推送（`git push origin <tag>`）；
+3. **自动构建**：推送 `v*` 开头的 tag 会触发 [.github/workflows/release.yml](.github/workflows/release.yml)，在 `macos-latest` 上编译、组装 app、压制 DMG、生成 SHA-256 校验值；
+4. **自动发布**：CI 校验 tag 与 `VERSION` 一致后，用 `gh release create` 创建 GitHub Release 并上传 DMG 与 `checksums.txt`。
+
+手动触发：在仓库「Actions → Release TraeChime → Run workflow」可手动跑一次打包（仅上传 artifact，不创建 Release），用于验证流程。
+
+> 当前产物为 ad-hoc 签名、未公证版本，仅限本地/内部分发。对外公开发布需接入 Developer ID 签名与公证（后续在脚本中补充）。
+
 ## 安装
 
-1. 打开 `dist/TraeChime.dmg`
+1. 打开 `dist/TraeChime-<版本>.dmg`
 2. 将 `TraeChime.app` 拖入「应用程序」文件夹
 3. 首次打开时，由于是 ad-hoc 签名，Gatekeeper 可能提示「无法验证开发者」。请**右键 → 打开**放行一次；若仍被拦截，可在终端执行：
 
@@ -194,9 +207,11 @@ Hook 桥接程序支持的环境变量（用于自定义 Hook 时）：
 
 ```
 Package.swift                    # SwiftPM 清单（两个可执行目标）
+VERSION                          # 版本号唯一来源（CI 打 tag 前校验）
+.github/workflows/release.yml    # GitHub Actions 自动打包发布
 scripts/
   make_app.sh                    # 编译并组装 TraeChime.app
-  make_dmg.sh                    # 由 .app 生成 TraeChime.dmg
+  make_dmg.sh                    # 由 .app 生成 TraeChime-<版本>.dmg
   gen_icns.sh                    # 由 Logo PNG 生成 AppIcon.icns
   smoke_test.sh                  # 端到端事件联调
 Sources/
