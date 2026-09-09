@@ -3,6 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# 版本号唯一来源：读 VERSION 文件（CI 打 tag 前会先校验 tag 与其一致）
+VERSION="$(cat VERSION 2>/dev/null || echo '0.0.0')"
+
 swift build -c release
 
 BIN=".build/release/TraeChime"
@@ -30,7 +33,7 @@ cp ".build/release/TraeChimeHook" "$APP/Contents/Resources/traechime-hook"
 chmod +x "$APP/Contents/Resources/traechime-hook"
 
 # Info.plist
-cat > "$APP/Contents/Info.plist" <<'EOF'
+cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -44,7 +47,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleExecutable</key>
     <string>TraeChime</string>
     <key>CFBundleIconFile</key>
